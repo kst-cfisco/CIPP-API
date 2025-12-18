@@ -13,7 +13,7 @@ function Start-UpdateTokensTimer {
         $currentUTCtime = (Get-Date).ToUniversalTime()
         try {
             $Refreshtoken = (Get-GraphToken -ReturnRefresh $true).Refresh_token
-            if ($env:AzureWebJobsStorage -eq 'UseDevelopmentStorage=true') {
+            if ($env:AzureWebJobsStorage -eq 'UseDevelopmentStorage=true' -or $env:NonLocalHostAzurite -eq 'true') {
                 $Table = Get-CIPPTable -tablename 'DevSecrets'
                 $Secret = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'Secret' and RowKey eq 'Secret'"
                 if ($Secret) {
@@ -23,15 +23,9 @@ function Start-UpdateTokensTimer {
                     Write-LogMessage -API 'Update Tokens' -message 'Could not update refresh token. Will try again in 7 days.' -sev 'CRITICAL'
                 }
             } else {
-                if ($env:MSI_SECRET) {
-                    Disable-AzContextAutosave -Scope Process | Out-Null
-                    $null = Connect-AzAccount -Identity
-                    $SubscriptionId = $env:WEBSITE_OWNER_NAME -split '\+' | Select-Object -First 1
-                    $null = Set-AzContext -SubscriptionId $SubscriptionId
-                }
                 $KV = ($env:WEBSITE_DEPLOYMENT_ID -split '-')[0]
                 if ($Refreshtoken) {
-                    Set-AzKeyVaultSecret -VaultName $KV -Name 'RefreshToken' -SecretValue (ConvertTo-SecureString -String $Refreshtoken -AsPlainText -Force)
+                    Set-CippKeyVaultSecret -VaultName $KV -Name 'RefreshToken' -SecretValue (ConvertTo-SecureString -String $Refreshtoken -AsPlainText -Force)
                 } else {
                     Write-LogMessage -API 'Update Tokens' -message 'Could not update refresh token. Will try again in 7 days.' -sev 'CRITICAL'
                 }
@@ -57,13 +51,13 @@ function Start-UpdateTokensTimer {
             }
 
             if ($AppSecret) {
-                if ($env:AzureWebJobsStorage -eq 'UseDevelopmentStorage=true') {
+                if ($env:AzureWebJobsStorage -eq 'UseDevelopmentStorage=true' -or $env:NonLocalHostAzurite -eq 'true') {
                     $Table = Get-CIPPTable -tablename 'DevSecrets'
                     $Secret = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'Secret' and RowKey eq 'Secret'"
                     $Secret.ApplicationSecret = $AppSecret.secretText
                     Add-AzDataTableEntity @Table -Entity $Secret -Force
                 } else {
-                    Set-AzKeyVaultSecret -VaultName $KV -Name 'ApplicationSecret' -SecretValue (ConvertTo-SecureString -String $AppSecret.secretText -AsPlainText -Force)
+                    Set-CippKeyVaultSecret -VaultName $KV -Name 'ApplicationSecret' -SecretValue (ConvertTo-SecureString -String $AppSecret.secretText -AsPlainText -Force)
                 }
                 Write-LogMessage -API 'Update Tokens' -message "New application secret generated for $AppId. Expiration date: $($AppSecret.endDateTime)." -sev 'INFO'
             }
@@ -99,7 +93,7 @@ function Start-UpdateTokensTimer {
                 try {
                     Write-Information "Updating refresh token for tenant $($Tenant.displayName) - $($Tenant.customerId)"
                     $Refreshtoken = (Get-GraphToken -ReturnRefresh $true -TenantId $Tenant.customerId).Refresh_token
-                    if ($env:AzureWebJobsStorage -eq 'UseDevelopmentStorage=true') {
+                    if ($env:AzureWebJobsStorage -eq 'UseDevelopmentStorage=true' -or $env:NonLocalHostAzurite -eq 'true') {
                         $Table = Get-CIPPTable -tablename 'DevSecrets'
                         $Secret = Get-CIPPAzDataTableEntity @Table -Filter "PartitionKey eq 'Secret' and RowKey eq 'Secret'"
                         if ($Secret) {
@@ -113,7 +107,7 @@ function Start-UpdateTokensTimer {
                     } else {
                         if ($Refreshtoken) {
                             $name = $Tenant.customerId
-                            Set-AzKeyVaultSecret -VaultName $KV -Name $name -SecretValue (ConvertTo-SecureString -String $Refreshtoken -AsPlainText -Force)
+                            Set-CippKeyVaultSecret -VaultName $KV -Name $name -SecretValue (ConvertTo-SecureString -String $Refreshtoken -AsPlainText -Force)
                         } else {
                             Write-Warning "Could not update refresh token for tenant $($Tenant.displayName) ($($Tenant.customerId))."
                             Write-LogMessage -API 'Update Tokens' -tenant $Tenant.defaultDomainName -tenantid $Tenant.customerId -message "Could not update refresh token for tenant $($Tenant.displayName). Will try again in 7 days." -sev 'CRITICAL'
